@@ -1,4 +1,5 @@
 use std::env;
+use std::fs;
 use std::str::from_utf8;
 use std::collections::HashMap;
 
@@ -64,11 +65,7 @@ impl From<FromHexError> for CrackError {
 fn get_letter_counts(s: &str) -> HashMap<char, u32> {
     let mut letter_counts = HashMap::new();
     for ch in s.chars() {
-        let key = if ch.is_alphabetic() {
-            ch.to_lowercase().next().unwrap()
-        } else {
-            '*'
-        };
+        let key = if ch.is_alphabetic() && ch.is_lowercase() { ch } else {'*'};
         let count = letter_counts.entry(key).or_insert(0);
         *count += 1;
     }
@@ -93,11 +90,9 @@ fn score_sentence(s: &str) -> f32 {
     score
 }
 
-fn crack_one_byte_xor(s: &str) -> Result<String, CrackError>{
+fn crack_one_byte_xor(s: &str) -> Result<(String, f32), CrackError>{
     let s_bytes = hex::decode(s)?;
-
-    let mut best_score = f32::INFINITY;
-    let mut best_msg = Err(CrackError::NoSolutionError);
+    let mut best_result = Err(CrackError::NoSolutionError);
 
     for key_val in 0..=255 {
         let result_bytes: Vec<u8> = s_bytes.iter().map(|a|
@@ -107,20 +102,53 @@ fn crack_one_byte_xor(s: &str) -> Result<String, CrackError>{
         if let Ok(decoded) = maybe_decoded {
             let msg = String::from(decoded);
             let score = score_sentence(&msg);
-            if score < best_score {
-                best_score = score;
-                best_msg = Ok(msg);
+            match best_result {
+                Ok((_, best_score)) => {
+                    if score < best_score {
+                        best_result = Ok((msg, score));
+                    }
+                }
+                Err(_) => best_result = Ok((msg, score))
             }
-        } else {
         }
     }
-    best_msg
+
+    best_result
 }
 
 fn challenge_single_byte_xor() {
     let msg = "1b37373331363f78151b7f2b783431333d\
                78397828372d363c78373e783a393b3736";
-    let result = crack_one_byte_xor(msg).unwrap();
+    let result = crack_one_byte_xor(msg).unwrap().0;
+    println!("{}", result);
+}
+
+// Challenge 4: Detect single-character XOR
+
+fn detect_one_byte_xor(codes: Vec<&str>) -> Result<(String, f32), CrackError> {
+    let mut best_result = Err(CrackError::NoSolutionError);
+ 
+    for code in codes{
+        let maybe_result = crack_one_byte_xor(&code);
+        if let Ok((msg, score)) = maybe_result {
+            match best_result {
+                Ok((_, best_score)) => {
+                    if score < best_score {
+                        best_result = Ok((msg, score));
+                    }
+                }
+                Err(_) => best_result = Ok((msg, score))
+            }
+        }
+    }
+
+    best_result 
+}
+
+fn challenge_detect_single_xor() {
+    let text = fs::read_to_string("4.txt").unwrap();
+    let codes: Vec<&str> = text.split('\n').collect();
+    let result = detect_one_byte_xor(codes).unwrap().0;
     println!("{}", result);
 }
 
@@ -133,6 +161,7 @@ fn main() {
         1 => challenge_hex_to_base64(),
         2 => challenge_fixed_xor(),
         3 => challenge_single_byte_xor(),
+        4 => challenge_detect_single_xor(),
         _ => println!("No such problem!")
     }
 }
